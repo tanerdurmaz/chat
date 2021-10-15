@@ -21,15 +21,18 @@ import {
 	IBoardHorse,
 	IMusicPlayer,
 	PanelItemEnum,
-	IMap,
 	newPanelTypes,
-	IBoardRace
+	IBoardRace,
+	IBoardObjkt,
+	ITrash,
+	IbgHolder
 } from '../types';
 import { CSSTransition, TransitionGroup } from 'react-transition-group';
 import { IMusicNoteProps, MusicNote } from './MusicNote';
 import { XYCoord, useDrop } from 'react-dnd';
 
 import { BoardObject } from './BoardObject';
+import { PinButton } from './shared/PinButton';
 import React, { useState } from 'react';
 import { UserCursors } from './UserCursors';
 import { backgrounds } from './BackgroundImages';
@@ -39,17 +42,10 @@ import { CustomToken as NFT } from '../typechain/CustomToken';
 // import introShark from '../assets/intro/leftshark.gif';
 // import present from '../assets/intro/present.gif';
 import { useContext } from 'react';
+import { MapsContext } from '../contexts/MapsContext';
 import { Map } from './Maps';
 import YouTubeBackground from './YouTubeBackground';
 import { useEffect } from 'react';
-
-import backgroundIcon from "../assets/navbar/backgroundIcon.png";
-import mapIcon from "../assets/buttons/mapsIcon.png";
-import videoIcon from "../assets/buttons/youtube-white.png";
-import marketplaceIcon from "../assets/buttons/marketplace-white.png";
-import raceIcon from "../assets/buttons/binoculars-white.png";
-import { AppStateContext } from '../contexts/AppStateContext';
-
 
 interface IBoardProps {
 	videoId: string;
@@ -122,18 +118,19 @@ interface IBoardProps {
 	unpinHorse: (horseKey: string) => void;
 	updateHorses: (horses: IBoardHorse[]) => void;
 	updateSelectedPanelItem: (panelItem: PanelItemEnum | undefined) => void;
-	setBackground: (data: IBackgroundState) => void;
-	updateMap: (data: IMap) => void;
-	removeBackground: (type: string) => void;
-	mapInputPosition: ({top: number; left: number;});
-	addNewMarker: (coordinates: {lat: number, lng: number, text: string}) => void;
-	removeMarker: (index: number) => void;
-	updateMarker: (index: number, text: string) => void;
 	setActivePanel: (panel: newPanelTypes) => void;
 	pinRace: (raceKey: string) => void;
 	unpinRace: (raceKey: string) => void;
-	raceId: string;
+	activeAddress: string;
+	objkts: IBoardObjkt[];
+	pinObjkt: (objktKey: string) => void;
+	unpinObjkt: (objktKey: string) => void;
+	updateObjkts: (objktKey: string) => void;
+	routeRoom: (roomName: string) => void;
+	trash: ITrash;
+	bgHolder: IbgHolder;
 }
+
 
 export const Board = ({
 	videoId,
@@ -198,18 +195,17 @@ export const Board = ({
 	updateHorses,
 	musicPlayer,
 	updateSelectedPanelItem,
-	setBackground,
-	updateMap,
-	removeBackground,
-	mapInputPosition,
-	addNewMarker,
-	removeMarker,
-	updateMarker,
 	setActivePanel,
 	pinRace,
 	unpinRace,
-	raceId
-
+	activeAddress,
+	objkts,
+	pinObjkt,
+	unpinObjkt,
+	updateObjkts,
+	routeRoom,
+	trash,
+	bgHolder
 }: IBoardProps) => {
 	// const [introState, setIntroState] = useState<'begin' | 'appear' | 'end'>(
 	// 	'begin'
@@ -251,7 +247,9 @@ export const Board = ({
 	// };
 
 	const pausePlayVideo = () => {
-		setIsPaused(!isPaused);
+		if (isYouTubeShowing) {
+			setIsPaused(!isPaused);
+		}
 	};
 
 	const backgroundImg = background.name?.startsWith('http')
@@ -262,30 +260,34 @@ export const Board = ({
 		accept: 'item',
 		drop(item: IPinnedItem, monitor) {
 			const delta = monitor.getDifferenceFromInitialOffset() as XYCoord;
-			const left = Math.round(item.left + delta.x);
-			const top = Math.round(item.top + delta.y);
-			console.log(item);
-			moveItem(item.itemType, item.id, left, top, delta.x, delta.y);
+			if(item && delta && delta.x  && delta.y){
+				const left = Math.round(item.left + delta.x);
+				const top = Math.round(item.top + delta.y);
+
+				moveItem(item.itemType, item.id, left, top, delta.x, delta.y);
+			}
 			return undefined;
 		}
 	});
 
+	const { isMapShowing } = useContext(MapsContext);
+	const [isYouTubeShowing, setIsYouTubeShowing] = useState<boolean>(
+		videoId !== ''
+	);
 	const [isPaused, setIsPaused] = useState<boolean>(true);
 	// const [ volume, setVolume ] = useState<number>(0.4);
 
 	useEffect(() => {
+		if (isMapShowing) {
+			setIsYouTubeShowing(false);
+		} else {
+			setIsYouTubeShowing(true);
+		}
+	}, [isMapShowing]);
+
+	useEffect(() => {
 		setIsPaused(false);
 	}, [videoId]);
-
-	const { socket } = useContext(AppStateContext);
-
-	const backgroundIconMap = {
-		image: <img src={backgroundIcon} alt="background icon" height={50} onClick={() => setBackground({...background, activeBackground: "image"})}/>,
-		map: <img src={mapIcon} alt="map icon" height={50} onClick={() => setBackground({...background, activeBackground: "map"})}/>,
-		race: <img src={raceIcon} alt="race icon" height={50} onClick={() => setBackground({...background, activeBackground: "race"})}/>,
-		video: <img src={videoIcon} alt="youtube icon" height={50} onClick={() => setBackground({...background, activeBackground: "video"})}/>,
-		marketplace: <img src={marketplaceIcon} alt="marketplace icon" height={50} onClick={() => setBackground({...background, activeBackground: "marketplace"})}/>
-	}
 
 	return (
 		<div
@@ -294,84 +296,45 @@ export const Board = ({
 				backgroundImage: `url(${backgroundImg})`,
 				backgroundPosition: 'center',
 				backgroundRepeat: 'no-repeat',
-				backgroundSize: 'cover'
+				backgroundSize: "1920px 1080px"
 			}}
 			ref={drop}
 			onClick={()=>{setActivePanel("empty")}}
 		>
-			
+			{(background.type === 'map' || isMapShowing) && <Map mapData={background.mapData} />}
 
-			{Array.isArray(background.type) ? (
-				<div className="board-background-icons">
-					{background.type.map(type => {
-						if(type){
-							return (
-								<div className="background-icon-container">
-									<button className="remove-background-button" onClick={() => {
-										removeBackground(type);
-										socket.emit('event', {
-											key: "background",
-											type,
-											func: 'remove'
-										});
-									}}>x</button>
-									{backgroundIconMap[type]}
-								</div>);
-						} else {
-							return null;
-						}
-					})}
-				</div>
-			) : null}
 
-			{background.mapData && <Map 
-				mapData={background.mapData} 
-				updateMap={updateMap} 
-				addNewMarker={addNewMarker} 
-				removeMarker={removeMarker}
-				updateMarker={updateMarker}
-				showMap={background.activeBackground === "map"}
-				/>}
+			{background.type === 'race' && (
+				<iframe
+					src={`https://3d-racing.zed.run/live/${background.raceId}`}
+					width="100%"
+					height="100%"
+					title="zed racing"
+					style={{ pointerEvents: 'auto' }}
+				/>
+			)}
 
-			{background.activeBackground === "map" && <BoardObject
-				id={'map-text-input'}
-				type="map"
-				onPin={() => {}}
-				onUnpin={() => {}}
-				top={mapInputPosition.top}
-				left={mapInputPosition.left}
-				updateMap={updateMap}
-				mapData={background.mapData}
-			/>}
+			{background.type === 'marketplace' && (
+				<iframe
+					className="opensea-listings"
+					title="Opensea Listings"
+					src="https://opensea.io/assets?embed=true"
+					width="100%"
+					height="100%"
+				></iframe>
+			)}
 
-			<iframe
-				className={background.activeBackground === "race" ? "race-background-active" : "race-background"}
-				src={`https://3d-racing.zed.run/live/${raceId}`}
-				width="100%"
-				height="100%"
-				title="zed racing"
-				style={{ pointerEvents: 'auto' }}
-			/>
-		
-
-		
-			<iframe
-				className={background.activeBackground === "marketplace" ? "opensea-listings-active" : "opensea-listings"}
-				title="Opensea Listings"
-				src="https://opensea.io/assets?embed=true"
-				width="100%"
-				height="100%"
-			></iframe>
-			
-
-			{videoId && <YouTubeBackground
+			{background.type === 'video' && <YouTubeBackground
+				isVideoPinned={isVideoPinned}
 				lastTime={lastTime}
 				videoId={videoId}
 				isPaused={isPaused}
 				volume={volume}
+				isYouTubeShowing={isYouTubeShowing}
 				pausePlayVideo={pausePlayVideo}
+				onPinVideo={addVideo}
+				unpinVideo={unpinVideo}
 				videoRef={videoRef}
-				showYoutube={background.activeBackground === 'video'}
 			/>}
 
 			{!hideAllPins && waterfallChat.show &&<BoardObject
@@ -385,6 +348,123 @@ export const Board = ({
 				top={waterfallChat.top}
 				left={waterfallChat.left}
 			/>}
+
+			{!hideAllPins && <BoardObject
+				id={"trash"}
+				type="trash"
+				onPin={() => {}}
+				onUnpin={() => {}}
+				top={trash.top}
+				left={trash.left}
+				unpinGif={unpinGif}
+				unpinImage={unpinImage}
+				unpinText={unpinText}
+				unpinObjkt={unpinObjkt}
+				unpinBackground={unpinBackground}
+			/>}
+
+			{!hideAllPins && <BoardObject
+				id={"bgHolder"}
+				type="bgHolder"
+				onPin={() => {}}
+				onUnpin={() => {}}
+				top={bgHolder.top}
+				left={bgHolder.left}
+				pinBackground={pinBackground}
+				unpinImage={unpinImage}
+				unpinGif={unpinGif}
+			/>}
+
+			{!hideAllPins && <BoardObject
+				id={"hist"}
+				type="gate"
+				subtype="top"
+				onPin={() => {}}
+				onUnpin={() => {}}
+				routeRoom={routeRoom}
+				top={10}
+				left={900}
+			/>}
+
+			{!hideAllPins &&<BoardObject
+				id={"hist"}
+				type="gate"
+				subtype="left"
+				onPin={() => {}}
+				onUnpin={() => {}}
+				routeRoom={routeRoom}
+				top={500}
+				left={10}
+			/>}
+
+			{!hideAllPins &&<BoardObject
+				id={"hist"}
+				type="gate"
+				subtype="bottom"
+				onPin={() => {}}
+				onUnpin={() => {}}
+				routeRoom={routeRoom}
+				top={800}
+				left={900}
+			/>}
+
+			{!hideAllPins &&<BoardObject
+				id={"hist"}
+				type="gate"
+				subtype="right"
+				onPin={() => {}}
+				onUnpin={() => {}}
+				routeRoom={routeRoom}
+				top={500}
+				left={1780}
+			/>}
+			{/*!hideAllPins &&<BoardObject
+				id={"objkt"}
+				objktId={"374125"}
+				type="objkt"
+				onPin={() => {}}
+				onUnpin={() => {}}
+				activeAddress={activeAddress}
+				top={300}
+				left={500}
+			/>*/}
+
+			{!hideAllPins ? (
+				<TransitionGroup>
+					{objkts.map((objkt) => (
+						<CSSTransition
+							key={objkt.key}
+							timeout={5000}
+							classNames="gif-transition"
+							onEntered={() => {
+								if (!objkt.isPinned) {
+									const index = objkts.findIndex(
+										(_objkt) => _objkt.key === objkt.key
+									);
+									updateObjkts([
+										...objkts.slice(0, index),
+										...objkts.slice(index + 1)
+									]);
+								}
+							}}
+						>
+							<BoardObject
+								{...objkt}
+								id={objkt.key}
+								type="objkt"
+								objktId={objkt.id}
+								onPin={() => {
+									pinObjkt(objkt.key);
+								}}
+								onUnpin={() => {
+									unpinObjkt(objkt.key);
+								}}
+							/>
+						</CSSTransition>
+					))}
+				</TransitionGroup>
+			) : null}
+
 
 			{!hideAllPins ? (
 				<TransitionGroup>
@@ -686,7 +766,7 @@ export const Board = ({
 					{images.map((image) => (
 						<CSSTransition
 							key={image.key}
-							timeout={5000}
+							timeout={1000}
 							classNames="gif-transition"
 							onEntered={() => {
 								if (!image.isPinned) {
@@ -819,6 +899,20 @@ export const Board = ({
 				</CSSTransition>
 			)}
 			{/* </TransitionGroup> */}
+
+
+			<div className="board-container-pin">
+				{isMapShowing && background.type !== 'map' && (
+					<PinButton
+						isPinned={false}
+						onPin={pinBackground}
+						onUnpin={unpinBackground}
+						placeholder="background"
+					/>
+				)}
+			</div>
+
+			{isMapShowing ? <Map /> : null}
 
 			<UserCursors
 				userLocations={userLocations}

@@ -22,8 +22,8 @@ const useStyles = makeStyles({
 		
 	},
 	input: {
-		borderRadius: 20,
-		background: 'white'
+		fontFamily: "poxel-font",
+		color: "black",
 	}
 });
 
@@ -100,17 +100,21 @@ export const Chat = ({
 	return (
 		<div className={classes.container}>
 			<div className={classes.container}>
-				<TextField
-					autoFocus={window.innerWidth > 500}
-					ref={textfieldRef}
-					placeholder="type your message here"
-					variant="outlined"
-					value={chatValue}
-					onChange={onChangeChat}
-					onKeyPress={onKeyPressChat}
-					className={classes.input}
-					onFocus={onFocus}
-				/>
+				<div style={{ paddingBlock: 5, paddingInline: 20, border: '1px dashed black' }}>
+					<TextField
+						inputProps={{ className: classes.input }}
+						autoFocus={window.innerWidth > 500}
+						ref={textfieldRef}
+						placeholder="Your message"
+						color="primary" focused
+						variant="standard"
+						value={chatValue}
+						onChange={onChangeChat}
+						onKeyPress={onKeyPressChat}
+						className={classes.input}
+						onFocus={onFocus}
+					/>
+				</div>
 				<StyledButton onClick={onButtonClickChat}>send</StyledButton>
 				<PinButton onPin={onPinMessage} isPinned={false} onUnpin={() => {}} />
 				<StyledButton onClick={showChat}>show chat</StyledButton>

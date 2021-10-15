@@ -111,7 +111,8 @@ interface IMessageEvent {
     | "unpin-item"
     | "clear-field"
     | "marketplace"
-    | "change-playlist";
+    | "change-playlist"
+    | "objkt";
   value?: any;
   [key: string]: any;
 }
@@ -462,7 +463,7 @@ export class Router {
 
         socket.to(roomId).emit("event", message);
         socket.emit("event", message);
-        //removeImageAfter1Min(clientRooms[socket.id]);
+        removeImageAfter1Min(clientRooms[socket.id]);
         break;
       case "send-race":
         socket.to(clientRooms[socket.id]).emit("event", message);
@@ -560,6 +561,14 @@ export class Router {
       case "change-playlist":
         socket.to(room).broadcast.emit("event", message);
         break;
+      case "objkt":
+        const objktKey = uuidv4();
+        const newObjktMessage = {
+          ...message,
+          objktKey,
+        };
+        socket.to(room).emit("event", newObjktMessage);
+        socket.emit("event", newObjktMessage);
     }
   };
 }

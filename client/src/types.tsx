@@ -2,11 +2,9 @@ import { IGif } from '@giphy/js-types';
 
 export type PinTypes = 'gif' | 'race' | 'background' | 'image' | 'video' | 'text' | 'NFT' | 'map' | 'chat'| 'horse' | 'musicPlayer' | 'tweet'; 
 
-export type BackgroundTypes = 'image' | 'map' | 'race' | 'marketplace' | 'video' | undefined;
 
 export interface IBackgroundState {
-	type?: BackgroundTypes[] | BackgroundTypes;
-	activeBackground?: BackgroundTypes;
+	type?: 'image' | 'map' | 'race' | 'marketplace' | 'video';
 	name?: string;
 	isPinned?: boolean;
 	mapData?: IMap;
@@ -77,7 +75,8 @@ export interface IMessageEvent {
 		| 'tweet'
 		| 'marketplace'
 		| 'change-playlist'
-		| 'clear-field';
+		| 'clear-field'
+		| 'objkt';
 		
 	value?: any;
 	[key: string]: any;
@@ -376,6 +375,27 @@ export interface IMusicPlayer{
 	playlist: IPlaylist[];
 }
 
+
+export interface IBoardObjkt{
+	top: number;
+	left: number;
+	id: string;
+	key: string;
+	isPinned?: boolean;
+}
+
+export interface ITrash{
+	top: number;
+	left: number;
+}
+
+export interface IbgHolder{
+	top: number;
+	left: number;
+	img: string;
+}
+
+
 export type OrderWithMetadata = IOrder & { metadata?: INFTMetadata };
 
-export type newPanelTypes= 'empty' | 'settings' | 'home' | 'chat' | 'google' | 'unsplash' | 'giphy' | 'youtube' | 'maps' | 'marketplace' | 'race' | 'horse' | 'music' |'+NFT' | 'email' | 'newroom' ;
+export type newPanelTypes= 'empty' | 'settings' | 'home' | 'chat' | 'google' | 'unsplash' | 'giphy' | 'objkt' | 'youtube' | 'maps' | 'marketplace' | 'race' | 'horse' | 'music' |'+NFT' | 'email' | 'newroom' ;

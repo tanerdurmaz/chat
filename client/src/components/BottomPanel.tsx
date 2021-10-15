@@ -4,8 +4,6 @@ import {
 	ITowerDefenseState,
 	PanelItemEnum,
 	IMusicPlayer,
-	BackgroundTypes,
-	IMap,
 	newPanelTypes,
 	IMetadata
 } from '../types';
@@ -74,15 +72,17 @@ export interface IBottomPanelProps {
 	myLocation?: string;
 	music?: IMetadata;
 	clearField: (field: string) => void;
-	addBackground: (type: BackgroundTypes, data: string | IMap) => void;
 }
+
 
 const useStyles = makeStyles(() => ({
 	drawerRoot: {
 		width: '100%',
+		zIndex: 99999999,
+		backgroundColor: 'white',
 	}
 }));
-
+//backgroundColor: 'black',
 export const BottomPanel = ({
 	bottomPanelRef,
 	isOpen,
@@ -126,8 +126,7 @@ export const BottomPanel = ({
 	email,
 	myLocation,
 	music,
-	clearField,
-	addBackground
+	clearField
 }: IBottomPanelProps) => {
 	const [images, setImages] = useState<IImagesState[]>([]);
 	const [videos, setQueriedVideos] = useState<Array<any>>([]);
@@ -144,7 +143,7 @@ export const BottomPanel = ({
 				paper: classes.drawerRoot
 			}}
 		>
-			<div ref={bottomPanelRef} className="bottom-panel-container">
+			<div ref={bottomPanelRef} className="bottom-panel-container"  style = {{ borderTop: '3px dashed black', }}>
 
 			<ThePanel
 					//update bottom panel size so board background can renders correct
@@ -229,7 +228,8 @@ export const BottomPanel = ({
 					myLocation={myLocation}
 					music={music}
 					clearField={clearField}
-					addBackground={addBackground}
+					//objkt
+					sendObjkt={(id) => {onAction('objkt', id)}}
 				/>
 			</div>
 		</Drawer>

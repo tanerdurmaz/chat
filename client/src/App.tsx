@@ -1,10 +1,11 @@
-import * as ethers from 'ethers';
+
+// @ts-nocheck
 import './App.css';
+import * as ethers from 'ethers';
 import abiNFT from './abis/NFT.abi.json';
 import Tour from 'reactour';
 import axios from 'axios';
 import { CustomToken as NFT } from './typechain/CustomToken';
-
 import {
 	BUILDING_COSTS,
 	ENEMY_VALUES,
@@ -38,12 +39,14 @@ import {
 	IWaterfallChat,
 	IBoardHorse,
 	IMusicPlayer,
-	BackgroundTypes,
 	newPanelTypes,
-	IBoardRace
+	IBoardRace,
+	IBoardObjkt,
+	ITrash,
+	IbgHolder
 } from './types';
 import { ILineData, Whiteboard, drawLine } from './components/Whiteboard';
-import { IconButton, Modal, Tooltip } from '@material-ui/core';
+import { IconButton, Modal, Tooltip, Button } from '@material-ui/core';
 import CloseIcon from '@material-ui/icons/Close';
 import React, {
 	useCallback,
@@ -58,7 +61,8 @@ import {
 	HashRouter as Router,
 	Switch,
 	useHistory,
-	useParams
+	useParams,
+	useLocation
 } from 'react-router-dom';
 import { UserCursor, avatarMap } from './components/UserCursors';
 import {
@@ -99,12 +103,19 @@ import ReactPlayer from 'react-player';
 /* import { Login } from './components/Login'; */
 import { Login } from './components/Login';
 
+import { DAppClient } from "@airgap/beacon-sdk";
+
+
+const dAppClient = new DAppClient({ name: "Beacon Docs" });
+let activeAccount;
+
 const clipboardy = require('clipboardy');
 
 const API_KEY = 'A7O4CiyZj72oLKEX2WvgZjMRS7g4jqS4';
 const GIF_FETCH = new GiphyFetch(API_KEY);
 const GIF_PANEL_HEIGHT = 150;
 const BOTTOM_PANEL_MARGIN_RATIO = 1.5;
+
 
 // const marketplaceSocket = io(config[configNetwork].marketplaceSocketURL, {
 // 	transports: ['websocket']
@@ -136,6 +147,18 @@ function App() {
 	} = useContext(AuthContext);
 	//eslint-disable-next-line
 	const [contractMarketplace, setContractMarketplace] = useState<Marketplace>();
+
+	useEffect(() => {
+		async function getAcc() {
+			activeAccount = await dAppClient.getActiveAccount();
+			/*if (activeAccount)
+			  setSynced(activeAccount.address)
+			else
+			  setSynced('sync')*/
+		  }
+	  
+		  getAcc();
+	}, []);
 
 	useEffect(() => {
 		if (provider && isLoggedIn) {
@@ -269,7 +292,7 @@ function App() {
 		avatar: '',
 		weather: { temp: '', condition: '' },
 		soundType: '',
-		currentRoom: 'default',
+		currentRoom: '0,0',
 		email: '',
 		location: ''
 	});
@@ -280,15 +303,6 @@ function App() {
 		temp: '',
 		condition: ''
 	});
-
-	const [mapInputPosition, setMapInputPosition] = useState({
-		top: 300,
-		left: 300
-	});
-
-	useEffect(() => {
-		console.log("App.tsx", background.mapData);
-	}, [background.mapData])
 
 	// YouTube function to keep track of timestamps
 	const updateLastTime = () => {
@@ -302,25 +316,32 @@ function App() {
 	/* const [showTour, setShowTour] = useState(false);
 	const [showLoginModal, setShowLoginModal] = useState(true); */
 	const [showTour, setShowTour] = useState(false);
-	const [showLoginModal, setShowLoginModal] = useState(true);
+	const [showLoginModal, setShowLoginModal] = useState(false);
 	const [isFirstVisit, setIsFirstVisit] = useState(false);
 	const [step, setStep] = useState(0);
 
-	useEffect(() => {
-		console.log(background.videoId);
-	}, [background.videoId])
-
 	const [waterfallChat, setWaterfallChat] = useState<IWaterfallChat>({
-		top: 0,
+		top: 40,
 		left: 0,
 		messages: [],
 		show: true
 	});
 
+	const [trash, setTrash] = useState<ITrash>({
+		top: 100,
+		left: 400,
+	});
+
+	const [bgHolder, setBgHolder] = useState<IbgHolder>({
+		top: 100,
+		left: 800,
+		img: "",
+	});
+
 	const [showWhiteboard, setShowWhiteboard] = useState<boolean>(false);
 
 	const [musicPlayer, setMusicPlayer] = useState<IMusicPlayer>({
-		top: 360,
+		top: 380,
 		left: 0,
 		playlist: []
 	});
@@ -328,7 +349,11 @@ function App() {
 
 	const [horses, setHorses] = useState<IBoardHorse[]>([]);
 
+	const [objkts, setObjkts] = useState<IBoardObjkt[]>([]);
+
 	const [activePanel, setActivePanel] = useState<newPanelTypes>('empty');
+
+
 	useEffect(() => {
 		setHasFetchedRoomPinnedItems(false);
 		console.log(roomId);
@@ -427,7 +452,7 @@ function App() {
 	// 			const { x, y } = generateRandomXY(true, true);
 	// 			const { x: relativeX, y: relativeY } = getRelativePos(x, y, 0, 0);
 	// 			const { isSuccessful, message } = await firebaseContext.pinRoomItem(
-	// 				roomId || 'default',
+	// 				roomId || '0,0',
 	// 				{
 	// 					type: 'NFT',
 	// 					top: relativeY,
@@ -501,6 +526,10 @@ function App() {
 
 	const routeHome = () => {
 		history.push(`/`);
+	}
+
+	const routeRoom = (roomName: string) => {
+		history.push(`/room/${roomName}`);
 	}
 
 	const handleChatMessage = useCallback((message: IMessageEvent) => {
@@ -581,29 +610,68 @@ function App() {
 		setTweets((tweets) => tweets.concat(newTweet));
 	}, []);
 
-	const addGif = useCallback((gifId: string, gifKey?: string) => {
+	const addGif = useCallback( async(gifId: string, gifKey?: string) => {
 		const { x, y } = generateRandomXY(true, true);
-		GIF_FETCH.gif(gifId).then((data) => {
+		GIF_FETCH.gif(gifId).then( async (data) => {
 			const newGif: IGifs = {
 				top: y,
 				left: x,
 				key: gifKey || uuidv4(),
-				data: data.data
+				data: data.data,
+				isPinned: true
 			};
 			setGifs((gifs) => gifs.concat(newGif));
-		});
-	}, []);
 
-	const addImage = useCallback((image: string, imageKey?: string) => {
+			const room = roomId || '0,0';
+
+			
+			const result = await firebaseContext.pinRoomItem(room, {
+				...newGif,
+				type: 'gif',
+				left: newGif.left / window.innerWidth,
+				top: newGif.top / window.innerHeight
+			});
+
+			if (!result.isSuccessful) {
+				setModalErrorMessage(result.message);
+			}
+			
+		});
+
+	}, [roomId]);
+
+
+	const addImage =  useCallback(async(image: string, imageKey?: string) => {
 		const { x, y } = generateRandomXY(true, true);
 		const newImage: IBoardImage = {
 			top: y,
 			left: x,
 			key: imageKey || uuidv4(),
-			url: imageToUrl(image)
+			url: imageToUrl(image),
+			isPinned: true
 		};
+		const room = roomId || '0,0';
 		setImages((images) => images.concat(newImage));
-	}, []);
+		const result = await firebaseContext.pinRoomItem(room, {
+			...newImage,
+			type: 'image',
+			left: newImage.left / window.innerWidth,
+			top: newImage.top / window.innerHeight
+		});
+
+
+		if (result.isSuccessful) {
+
+
+			socket.emit('event', {
+				key: 'pin-item',
+				type: 'image',
+				itemKey: imageKey
+			});
+		} else if (result.message) {
+			setModalErrorMessage(result.message);
+		}
+	}, [roomId]);
 
 	// List of videos
 	const addVideo = useCallback((videoId: string | undefined) => {
@@ -947,7 +1015,6 @@ function App() {
 							videoId:  undefined
 						});
 					} else {
-						console.log(message);
 						setBackground({
 							name: message.name,
 							isPinned: true,
@@ -1089,6 +1156,29 @@ function App() {
 		});
 	}, []);
 
+	const addObjkt = useCallback(async(id: string, objktKey?: string) => {
+		const { x, y } = generateRandomXY(true, true);
+		const newObjkt: IBoardObjkt = {
+			top: y,
+			left: x,
+			key: objktKey || uuidv4(),
+			id: id,
+			isPinned: true
+		}
+		setObjkts((objkts) => objkts.concat(newObjkt));
+
+		const room = roomId || '0,0';
+
+		const result = await firebaseContext.pinRoomItem(room, {
+			...newObjkt,
+			type: 'objkt',
+			left: newObjkt.left / window.innerWidth,
+			top: newObjkt.top / window.innerHeight
+		});
+	}, [roomId]);
+
+	
+
 	const handleMoveItemMessage = useCallback(
 		(message: IMessageEvent) => {
 			const { type, top, left, itemKey } = message;
@@ -1215,9 +1305,23 @@ function App() {
 						left: relativeLeft
 					}));
 					break;
+				case 'objkt':
+					const objktIndex = objkts.findIndex((objkt) => objkt.key === itemKey);
+					if (objktIndex !== -1) {
+						setObjkts([
+							...objkts.slice(0, objktIndex),
+							{
+								...objkts[objktIndex],
+								top: relativeTop,
+								left: relativeLeft
+							},
+							...objkts.slice(objktIndex + 1)
+						]);
+					}
+					break;
 			}
 		},
-		[images, videos, NFTs, gifs, pinnedText, tweets, horses]
+		[images, videos, NFTs, gifs, pinnedText, tweets, horses, objkts]
 	);
 
 	// const onBuy = async (orderId: string) => {
@@ -1358,47 +1462,27 @@ function App() {
 		const onMessageEvent = (message: IMessageEvent) => {
 			switch (message.key) {
 				case 'map':
-					switch(message.func){
-						case 'update' :
-							setBackground((background) => ({
-								...background,
-								mapData: message.mapData
-							}));
-							break;
-						case 'add-marker' :
-							setBackground((background) => ({
-								...background,
-								mapData: {
-									coordinates: background.mapData!.coordinates,
-									markers: background.mapData!.markers.concat(message.marker),
-									zoom: background.mapData!.zoom
-								}
-							}));
-							break;
-						case 'remove-marker' :
-							setBackground((background) => ({
-								...background,
-								mapData: {
-									coordinates: background.mapData!.coordinates,
-									markers: [...background.mapData!.markers.slice(0, message.index), ...background.mapData!.markers.slice(message.index + 1)],
-									zoom: background.mapData!.zoom
-								}
-							}));
-							break;
-						case 'update-marker' :
-							setBackground((background) => ({
-								...background,
-								mapData: {
-									coordinates: background.mapData!.coordinates,
-									markers: [
-										...background.mapData!.markers.slice(0, message.index),
-										{ ...background.mapData!.markers[message.index], text: message.text },
-										...background.mapData!.markers.slice(message.index + 1)
-									],
-									zoom: background.mapData!.zoom
-								}
-							}));
-							break;
+					if (message.isMapShowing !== undefined) {
+						updateIsMapShowing(message.isMapShowing);
+					}
+					if (message.zoom !== undefined) {
+						updateZoom(message.zoom);
+					}
+					if (message.coordinates) {
+						const newCoordinates = {
+							lat: message.coordinates.lat,
+							lng: message.coordinates.lng
+						};
+						updateCoordinates(newCoordinates);
+					}
+					if (message.func === 'add') {
+						addMarker(message.marker);
+					}
+					if (message.func === 'delete') {
+						deleteMarker(message.index);
+					}
+					if (message.func === 'update') {
+						updateMarkerText(message.index, message.text);
 					}
 					break;
 				case 'sound':
@@ -1467,58 +1551,15 @@ function App() {
 					handleTowerDefenseEvents(message);
 					break;
 				case 'background':
-					switch(message.type){
-						case("video"):
-							setBackground((background) => ({
-								...background,
-								type: message.func === "add" ? (
-									Array.isArray(background.type) ? background.type.concat("video") : [background.type, "video"]) : (
-										Array.isArray(background.type) ? background.type.filter(entry => entry !== "video") : background.type),
-								videoId: message.func === "add" ? message.videoId : ""
-							}));
-							break;
-						case("marketplace"):
-							setBackground((background) => ({
-								...background,
-								type: message.func === "add" ? (
-									Array.isArray(background.type) ? background.type.concat("marketplace") : [background.type, "marketplace"]) : (
-										Array.isArray(background.type) ? background.type.filter(entry => entry !== "marketplace") : background.type),
-							}));
-							break;
-						case("map"):
-							setBackground((background) => ({
-								...background,
-								type: message.func === "add" ? (
-									Array.isArray(background.type) ? background.type.concat("map") : [background.type, "map"]) : (
-										Array.isArray(background.type) ? background.type.filter(entry => entry !== "map") : background.type),
-								mapData: message.func === "add" ? {
-									coordinates: {
-										lat: 33.91925555555555,
-										lng: -118.41655555555555
-									},
-									markers: [],
-									zoom: 12
-								} : undefined
-							}));
-							break;
-						case("race"):
-							setBackground((background) => ({
-								...background,
-								type: message.func === "add" ? (
-									Array.isArray(background.type) ? background.type.concat("race") : [background.type, "race"]) : (
-										Array.isArray(background.type) ? background.type.filter(entry => entry !== "race") : background.type),
-								raceId: message.func === "add" ? message.raceId : ""
-							}));
-							break;
-						case("image"):
-							setBackground((background) => ({
-								...background,
-								type: message.func === "add" ? (
-									Array.isArray(background.type) ? background.type.concat("image") : [background.type, "image"]) : (
-										Array.isArray(background.type) ? background.type.filter(entry => entry !== "image") : background.type),
-								name: message.func === "add" ? message.name : ""
-							}));
-					}
+					setVideoId('');
+					setBackground((background) => ({
+						...background,
+						name: message.value,
+						isPinned: message.isPinned,
+						type: message.type,
+						mapData: message.mapData,
+						raceId: message.raceId
+					}));
 					break;
 				case 'messages':
 					setAvatarMessages(message.value as IAvatarChatMessages);
@@ -1659,6 +1700,11 @@ function App() {
 				case 'change-playlist':
 					handleChangePlaylist(message);
 					break;
+				case 'objkt':
+					if (message.value) {
+						addObjkt(message.value, message.objktKey);
+					}
+					break;
 			}
 		};
 
@@ -1682,7 +1728,7 @@ function App() {
 			if (roomId) {
 				socket.emit('connect room', roomId);
 			} else {
-				socket.emit('connect room', 'default');
+				socket.emit('connect room', '0,0');
 			}
 		};
 
@@ -1724,6 +1770,7 @@ function App() {
 		updateMarkerText,
 		updateWaterfallChat,
 		addHorse,
+		addObjkt,
 		handleChangePlaylist,
 		videos,
 		background
@@ -1745,7 +1792,7 @@ function App() {
 				setUserProfile((profile) => ({ ...profile, message: chatValue }));
 				const timestamp = new Date().getTime().toString();
 				firebaseContext.addtoChat(
-					roomId || 'default',
+					roomId || '0,0',
 					chatValue,
 					userProfile.avatar,
 					userProfile.name,
@@ -1841,7 +1888,7 @@ function App() {
 					key: 'background',
 					value: backgroundName
 				});
-				addBackground("image", backgroundName);
+				firebaseContext.unpinRoomItem(roomId || '0,0', 'background');
 				break;
 			case 'image':
 				const image = args[0] as string;
@@ -1857,6 +1904,10 @@ function App() {
 					key: 'animation',
 					value: animationType
 				});
+				break;
+			case 'animation-single':
+				const animationType2 = args[0] as string;
+				playAnimation(animationType2);
 				break;
 			case 'send-race':
 				const raceId = args[0] as string;
@@ -1875,7 +1926,7 @@ function App() {
 					raceId: raceId
 				});
 
-				firebaseContext.pinRoomItem(roomId || 'default', {
+				firebaseContext.pinRoomItem(roomId || '0,0', {
 					name: background.name,
 					type: 'background',
 					top: 0,
@@ -2045,7 +2096,7 @@ function App() {
 				});
 				break;
 			case 'marketplace':
-				const room = roomId || 'default';
+				const room = roomId || '0,0';
 
 				setBackground({
 					name: '',
@@ -2078,13 +2129,13 @@ function App() {
 				if (!isNaN(index) && musicPlayer.playlist.length !== 0) {
 					if (musicPlayer.playlist.length === 1) {
 						firebaseContext.removefromPlaylist(
-							roomId || 'default',
+							roomId || '0,0',
 							musicPlayer.playlist[index].timestamp
 						);
 						setMusicPlayer((musicPlayer) => ({ ...musicPlayer, playlist: [] }));
 					} else {
 						firebaseContext.removefromPlaylist(
-							roomId || 'default',
+							roomId || '0,0',
 							musicPlayer.playlist[index].timestamp
 						);
 						setMusicPlayer((musicPlayer) => ({
@@ -2107,13 +2158,20 @@ function App() {
 							name: name
 						})
 					}));
-					firebaseContext.addtoPlaylist(roomId || 'default', url, name, timestamp);
+					firebaseContext.addtoPlaylist(roomId || '0,0', url, name, timestamp);
 				}
 				socket.emit('event', {
 					key: 'change-playlist',
 					value: {url: url, name: name}
 				});
 
+				break;
+			case 'objkt':
+				const objktId = args[0] as string;
+				socket.emit('event', {
+					key: 'objkt',
+					value: objktId
+				});
 				break;
 			default:
 		}
@@ -2174,7 +2232,7 @@ function App() {
 					const { itemKey, value } = movingBoardItem;
 
 					const pinResult = await firebaseContext.pinRoomItem(
-						roomId || 'default',
+						roomId || '0,0',
 						{
 							type: 'text',
 							top: y,
@@ -2225,7 +2283,7 @@ function App() {
 	};
 
 	useEffect(() => {
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		// if (isInvalidRoom === undefined) {
 		firebaseContext.getRoom(room).then((result) => {
@@ -2277,12 +2335,13 @@ function App() {
 				const pinnedRaces: IBoardRace[] = [];
 				const pinnedHorses: IBoardHorse[] = [];
 				const pinnedTweets: ITweet[] = [];
+				const pinnedObjkts: IBoardObjkt[] = [];
 
 				let backgroundType: 'image' | 'map' | 'race' | 'marketplace' | 'video' | undefined;
 				let backgroundImg: string | undefined;
 				let backgroundMap: IMap | undefined;
 				let backgroundVideo: string | undefined;
-				let backgroundArray: any;
+				let backgroundRace: string | undefined;
 				
 				pinnedItems.data.forEach((item) => {
 					if (item.type === 'gif') {
@@ -2326,6 +2385,7 @@ function App() {
 						backgroundImg = item.name;
 						backgroundMap = item.mapData;
 						backgroundVideo = item.videoId;
+						backgroundRace = item.raceId;
 					} else if (item.type === 'race') {
 						pinnedRaces.push({
 							...item,
@@ -2355,6 +2415,15 @@ function App() {
 								text: item.value
 							});
 						}
+					} else if (item.type === 'objkt') {
+						pinnedObjkts.push({
+							...item,
+							top: item.top! * window.innerHeight,
+							left: item.left! * window.innerWidth,
+							isPinned: true,
+							key: item.key!,
+							id: item.id
+						});
 					} else if (item.type === 'horse') {
 						getHorse(item.id).then((res) => {
 							pinnedHorses.push({
@@ -2392,8 +2461,6 @@ function App() {
 								id: item.id
 							});
 						});
-					} else if (Array.isArray(item.type)) {
-						backgroundArray = item;
 					}
 				});
 
@@ -2402,21 +2469,19 @@ function App() {
 				setTweets(pinnedTweets);
 				setPinnedText(pinnedText);
 				setVideos(pinnedVideos);
-				if(backgroundArray){
-					setBackground(backgroundArray);
-				} else {
-					setBackground({
-						name: backgroundImg,
-						isPinned: !!backgroundImg || !!backgroundMap || !!backgroundVideo,
-						mapData: backgroundMap,
-						type: backgroundType,
-						videoId: backgroundVideo
-					});
-				}
+				setBackground({
+					name: backgroundImg,
+					isPinned: !!backgroundImg || !!backgroundMap || !!backgroundVideo,
+					mapData: backgroundMap,
+					type: backgroundType,
+					videoId: backgroundVideo,
+					raceId: backgroundRace
+				});
 				setVideoId(backgroundVideo ? backgroundVideo : "");
 				setNFTs(pinnedNFTs);
 				setHorses(pinnedHorses);
 				setRaces(pinnedRaces);
+				setObjkts(pinnedObjkts);
 			});
 		}
 	}, [
@@ -2431,7 +2496,7 @@ function App() {
 	const pinGif = async (gifKey: string) => {
 		const gifIndex = gifs.findIndex((gif) => gif.key === gifKey);
 		const gif = gifs[gifIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (gif && !gif.isPinned) {
 			const result = await firebaseContext.pinRoomItem(room, {
@@ -2462,7 +2527,7 @@ function App() {
 	const pinNFT = async (nftId: string) => {
 		const nftIndex = NFTs.findIndex((nft) => nft.key === nftId);
 		const nft = NFTs[nftIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (nft && !nft.isPinned) {
 			const result = await firebaseContext.pinRoomItem(room, {
@@ -2492,7 +2557,7 @@ function App() {
 	const pinTweet = async (tweetID: string) => {
 		const tweetIndex = tweets.findIndex((tweet) => tweet.id === tweetID);
 		const tweet = tweets[tweetIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (tweet && !tweet.isPinned) {
 			console.log('Tweet called pinRoomItem');
@@ -2524,7 +2589,7 @@ function App() {
 	const pinImage = async (imageKey: string) => {
 		const imageIndex = images.findIndex((image) => image.key === imageKey);
 		const image = images[imageIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (image && !image.isPinned) {
 			const result = await firebaseContext.pinRoomItem(room, {
@@ -2555,7 +2620,7 @@ function App() {
 	const pinVideo = async (videoId: string | undefined) => {
 		const videoIndex = videos.findIndex((video) => video.key === videoId);
 		const video = videos[videoIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (video && !video.isPinned) {
 			const result = await firebaseContext.pinRoomItem(room, {
@@ -2586,7 +2651,7 @@ function App() {
 	const unpinVideo = async (videoId: string | undefined) => {
 		const videoIndex = videos.findIndex((video) => video.key === videoId);
 		const video = videos[videoIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (video && video.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -2629,7 +2694,7 @@ function App() {
 	const pinRace = async (RaceKey: string) => {
 		const raceIndex = races.findIndex((race) => race.key === RaceKey);
 		const race = races[raceIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (race && !race.isPinned) {
 
@@ -2661,7 +2726,7 @@ function App() {
 	const unpinRace = async (raceKey: string) => {
 		const index = races.findIndex((race) => race.key === raceKey);
 		const race = races[index];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (race && race.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -2681,282 +2746,15 @@ function App() {
 			}
 		}
 	};
-	
-	const addBackground = async (type: BackgroundTypes, data: string | IMap) => {
-		const room = roomId || 'default';
 
-		let backgrounds: any[] = [];
-		if(Array.isArray(background.type)){
-			if(!background.type.includes(type)){
-				backgrounds = [...background.type].concat(type);
-			} else {
-				backgrounds = [...background.type];
-			}
-		} else if (typeof background.type === "string"){
-			if(background.type === type) {
-				backgrounds = [background.type];
-			} else {
-				backgrounds = [background.type, type];
-			}
-		} else {
-			backgrounds = [type]
-		}
-
-		let configData: any = {};
-		if(type === "map"){
-			configData = {
-				type: backgrounds,
-				name: background.name,
-				raceId: background.raceId,
-				videoId: background.videoId,
-				mapData: data
-			}
-		} else if (type === "video"){
-			configData = {
-				type: backgrounds,
-				videoId: data,
-				name: background.name,
-				raceId: background.raceId,
-				mapData: background.mapData
-			}
-		} else if (type === "race"){
-			configData = {
-				type: backgrounds,
-				raceId: data,
-				videoId: background.videoId,
-				name: background.name,
-				mapData: background.mapData
-			}
-		} else if (type === "image"){
-			configData = {
-				type: backgrounds,
-				raceId: background.raceId,
-				videoId: background.videoId,
-				name: data,
-				mapData: background.mapData
-			}
-		} else if (type === "marketplace"){
-			configData = {
-				...background,
-				type: backgrounds
-			}
-		}
-
-
-		const result = await firebaseContext.updateBackground(room, configData);
-
-		if (result.isSuccessful) {
-			setBackground((background) => ({...configData, activeBackground: type}));
-		}  else if (result.message) {
-			setModalErrorMessage(result.message);
-		}
-	}
-
-	const removeBackground = async (type: string) => {
-		const room = roomId || 'default';
-
-		let backgrounds: any[] = []
-		if(Array.isArray(background.type)){
-			backgrounds = background.type.filter(entry => entry !== type);
-		}
-
-		let configData: any = {};
-		if(type === "map"){
-			configData = {
-				type: backgrounds,
-				name: background.name,
-				raceId: background.raceId,
-				videoId: background.videoId,
-				mapData: undefined
-			}
-		} else if (type === "image"){
-			configData = {
-				type: backgrounds,
-				name: "",
-				raceId: background.raceId,
-				videoId: background.videoId,
-				mapData: undefined
-			}
-		} else if (type === "video"){
-			configData = {
-				type: backgrounds,
-				videoId: "",
-				name: background.name,
-				raceId: background.raceId,
-				mapData: background.mapData
-			}
-		} else if (type === "race"){
-			configData = {
-				type: backgrounds,
-				raceId: "",
-				videoId: background.videoId,
-				name: background.name,
-				mapData: background.mapData
-			}
-		} else if (type === "marketplace"){
-			configData = {
-				type: backgrounds,
-				raceId: background.raceId,
-				videoId: background.videoId,
-				name: background.name,
-				mapData: background.mapData
-			}
-		}
-
-
-		const result = await firebaseContext.updateBackground(room, configData);
-
-		if (result.isSuccessful) {
-			setBackground((background) => ({...configData, activeBackground: backgrounds[0]}));
-		}  else if (result.message) {
-			setModalErrorMessage(result.message);
-		}
-	}
-
-	const updateMap = async (mapData: IMap) => {
-		const room = roomId || 'default';
-		let configData = {
-			type: background.type,
-			name: background.name,
-			raceId: background.raceId,
-			videoId: background.videoId,
-			mapData
-		}
-		console.log("configData", configData);
-		const result = await firebaseContext.updateMap(room, configData);
-
-		if (result.isSuccessful) {
-			setBackground({...configData, activeBackground: "map"});
-		}  else if (result.message) {
-			setModalErrorMessage(result.message);
-		}
-	}
-
-	const addNewMarker = async (coordinates: { lat: number; lng: number, text: string }) => {
-		const room = roomId || 'default';
-
-		if (background.mapData) {
-			let configData = {
-				type: background.type,
-				name: background.name,
-				raceId: background.raceId,
-				videoId: background.videoId,
-				mapData: {
-					coordinates: background.mapData.coordinates,
-					zoom: background.mapData.zoom,
-					markers: background.mapData.markers.concat(coordinates)
-				}
-			};
-
-			const result = await firebaseContext.updateMap(room, configData);
-			if (result.isSuccessful) {
-				setBackground((background) => ({
-					...background,
-					mapData: {
-						...background.mapData!,
-						markers: background.mapData!.markers.concat(coordinates)
-					}
-				}));
-			} else if (result.message) {
-				setModalErrorMessage(result.message);
-			}
-		}
-	};
-
-	const removeMarker = async (index: number) => {
-		const room = roomId || 'default';
-
-		if (background.mapData) {
-			let configData = {
-				type: background.type,
-				name: background.name,
-				raceId: background.raceId,
-				videoId: background.videoId,
-				mapData: {
-					coordinates: background.mapData.coordinates,
-					zoom: background.mapData.zoom,
-					markers: [...background.mapData.markers.slice(0, index), ...background.mapData.markers.slice(index + 1)]
-				}
-			};
-
-			const result = await firebaseContext.updateMap(room, configData);
-			if (result.isSuccessful) {
-				setBackground((background) => ({
-					...background,
-					mapData: {
-						...background.mapData!,
-						markers: [...background.mapData!.markers.slice(0, index), ...background.mapData!.markers.slice(index + 1)]
-					}
-				}));
-			} else if (result.message) {
-				setModalErrorMessage(result.message);
-			}
-		}
-	};
-
-	const updateMarker = async (index: number, text: string) => {
-		const room = roomId || 'default';
-
-		if (background.mapData) {
-			let configData = {
-				type: background.type,
-				name: background.name,
-				raceId: background.raceId,
-				videoId: background.videoId,
-				mapData: {
-					coordinates: background.mapData.coordinates,
-					zoom: background.mapData.zoom,
-					markers: [
-						...background.mapData.markers.slice(0, index),
-						{ ...background.mapData.markers[index], text },
-						...background.mapData.markers.slice(index + 1)
-					]
-				}
-			};
-
-			const result = await firebaseContext.updateMap(room, configData);
-			if (result.isSuccessful) {
-				setBackground((background) => ({
-					...background,
-					mapData: {
-						...background.mapData!,
-						markers: [
-							...background.mapData!.markers.slice(0, index),
-							{ ...background.mapData!.markers[index], text },
-							...background.mapData!.markers.slice(index + 1)
-						]
-					}
-				}));
-			} else if (result.message) {
-				setModalErrorMessage(result.message);
-			}
-		}
-	};
-
-	const pinBackground = async () => {
-		const room = roomId || 'default';
-
+	const pinBackground = async (imgSrc?: string) => {
+		const room = roomId || '0,0';
 		let backgroundType: 'image' | 'map' | 'race' | 'marketplace' | 'video' | undefined;
-		if (isMapShowing) {
-			backgroundType = 'map';
-		} else if (isVideoShowing) {
-			backgroundType = 'video';
-		} else if (background.name) {
-			backgroundType = 'image';
-		} else if (background.type) {
-			backgroundType = 'marketplace';
-		}
-
 		let backgroundName: string | undefined;
-		if (backgroundType === 'image') {
-			backgroundName = background.name;
-		} else {
-			backgroundName = '';
-		}
 
-		let mapCoordinates: IMap | undefined = { coordinates, markers, zoom };
-		if (backgroundType !== 'map') {
-			mapCoordinates = undefined;
+		if(imgSrc){
+			backgroundType = 'image';
+			backgroundName = imgSrc;
 		}
 
 		const result = await firebaseContext.pinRoomItem(room, {
@@ -2965,7 +2763,6 @@ function App() {
 			top: 0,
 			left: 0,
 			subType: backgroundType,
-			mapData: mapCoordinates,
 			videoId: videoId
 		});
 
@@ -2974,7 +2771,6 @@ function App() {
 				name: backgroundName,
 				isPinned: true,
 				type: backgroundType,
-				mapData: mapCoordinates,
 				videoId: videoId
 			}));
 
@@ -2983,14 +2779,9 @@ function App() {
 				type: 'background',
 				name: backgroundName,
 				subType: backgroundType,
-				mapData: mapCoordinates,
 				videoId: videoId
 			});
-			updateIsMapShowing(false);
-			socket.emit('event', {
-				key: 'map',
-				isMapShowing: false
-			});
+
 		} else if (result.message) {
 			setModalErrorMessage(result.message);
 		}
@@ -2998,7 +2789,7 @@ function App() {
 	};
 
 	const unpinBackground = async () => {
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (background.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -3008,7 +2799,7 @@ function App() {
 
 			if (isSuccessful) {
 				let oldBackgroundType = '';
-				if (typeof background.type === 'string') {
+				if (background.type) {
 					oldBackgroundType = background.type.valueOf();
 				}
 
@@ -3041,7 +2832,7 @@ function App() {
 	const unpinTweet = async (tweetID: string) => {
 		const tweetIndex = tweets.findIndex((tweet) => tweet.id === tweetID);
 		const tweet = tweets[tweetIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (tweet && tweet.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -3067,7 +2858,7 @@ function App() {
 	const unpinGif = async (gifKey: string) => {
 		const gifIndex = gifs.findIndex((gif) => gif.key === gifKey);
 		const gif = gifs[gifIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (gif && gif.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -3091,7 +2882,7 @@ function App() {
 	const unpinNFT = async (nftId: string) => {
 		const index = NFTs.findIndex((nft) => nft.key === nftId);
 		const nft = NFTs[index];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (nft && nft.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -3116,7 +2907,7 @@ function App() {
 	const unpinImage = async (imageKey: string) => {
 		const index = images.findIndex((image) => image.key === imageKey);
 		const image = images[index];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (image && image.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -3139,7 +2930,7 @@ function App() {
 
 	const unpinText = async (key: string) => {
 		const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
-			roomId || 'default',
+			roomId || '0,0',
 			key
 		);
 
@@ -3267,6 +3058,19 @@ function App() {
 					...horses.slice(horseIndex + 1)
 				]);
 			}
+		} else if (type === 'objkt') {
+			const objktIndex = objkts.findIndex((objkt) => objkt.key === id);
+			if (objktIndex !== -1) {
+				setObjkts([
+					...objkts.slice(0, objktIndex),
+					{
+						...objkts[objktIndex],
+						top,
+						left
+					},
+					...objkts.slice(objktIndex + 1)
+				]);
+			}
 		}
 
 		if (type === 'chat') {
@@ -3281,16 +3085,23 @@ function App() {
 				top: top,
 				left: left
 			}));
-		} else if (type === 'map'){
-			setMapInputPosition({
+		} else if (type === 'trash') {
+			setTrash((trash) => ({
+				...trash,
 				top: top,
 				left: left
-			});
+			}));
+		} else if (type === 'bgHolder') {
+			setBgHolder((bgHolder) => ({
+				...bgHolder,
+				top: top,
+				left: left
+			}));
 		} else {
 			const {
 				isSuccessful,
 				message
-			} = await firebaseContext.movePinnedRoomItem(roomId || 'default', {
+			} = await firebaseContext.movePinnedRoomItem(roomId || '0,0', {
 				type,
 				top: y,
 				left: x,
@@ -3391,6 +3202,19 @@ function App() {
 							...horses.slice(horseIndex + 1)
 						]);
 					}
+				} else if (type === 'objkt') {
+					const objktIndex = objkts.findIndex((objkt) => objkt.key === id);
+					if (objktIndex !== -1) {
+						setObjkts([
+							...objkts.slice(0, objktIndex),
+							{
+								...objkts[objktIndex],
+								top,
+								left
+							},
+							...objkts.slice(objktIndex + 1)
+						]);
+					}
 				}
 
 				return;
@@ -3405,10 +3229,65 @@ function App() {
 		});
 	};
 
+	const pinObjkt = async (objktKey: string) => {
+		const objktIndex = objkts.findIndex((objkt) => objkt.key === objktKey);
+		const objkt = objkts[objktIndex];
+		const room = roomId || '0,0';
+
+		if (objkt && !objkt.isPinned) {
+			const result = await firebaseContext.pinRoomItem(room, {
+				...objkt,
+				type: 'objkt',
+				left: objkt.left / window.innerWidth,
+				top: objkt.top / window.innerHeight
+			});
+
+			if (result.isSuccessful) {
+				setObjkts([
+					...objkts.slice(0, objktIndex),
+					{ ...objkt, isPinned: true },
+					...objkts.slice(objktIndex + 1)
+				]);
+
+				socket.emit('event', {
+					key: 'pin-item',
+					type: 'objkt',
+					itemKey: objktKey
+				});
+			} else if (result.message) {
+				setModalErrorMessage(result.message);
+			}
+		}
+	};
+
+	const unpinObjkt = async (objktKey: string) => {
+		const index = objkts.findIndex((objkt) => objkt.key === objktKey); 
+		const objkt = objkts[index];
+		const room = roomId || '0,0';
+
+		if (objkt && objkt.isPinned) {
+			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
+				room,
+				objkt.key
+			);
+			if (isSuccessful) {
+				setObjkts([...objkts.slice(0, index), ...objkts.slice(index + 1)]);
+
+				socket.emit('event', {
+					key: 'unpin-item',
+					type: 'objkt',
+					itemKey: objktKey
+				});
+			} else if (message) {
+				setModalErrorMessage(message);
+			}
+		}
+	};
+
 	const pinHorse = async (horseKey: string) => {
 		const horseIndex = horses.findIndex((horse) => horse.key === horseKey);
 		const horse = horses[horseIndex];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (horse && !horse.isPinned) {
 			const result = await firebaseContext.pinRoomItem(room, {
@@ -3439,7 +3318,7 @@ function App() {
 	const unpinHorse = async (horseKey: string) => {
 		const index = horses.findIndex((horse) => horse.key === horseKey);
 		const horse = horses[index];
-		const room = roomId || 'default';
+		const room = roomId || '0,0';
 
 		if (horse && horse.isPinned) {
 			const { isSuccessful, message } = await firebaseContext.unpinRoomItem(
@@ -3486,6 +3365,8 @@ function App() {
 		);
 	}
 
+
+
 	const steps = [
 		{
 			selector: '.first-step',
@@ -3515,15 +3396,15 @@ function App() {
 			className="app"
 			style={{
 				//height: window.innerHeight - bottomPanelHeight
-				height: window.innerHeight
+				height: 1080,
+				width: 1920,
+				backgroundColor: "white"
 			}}
 			onClick={onClickApp}
 		>
-			<MetamaskSection />
-
 			<Route exact path={['/room/:roomId', '/']}>
-				<Board
-					videoId={background.videoId!}
+				<Board 
+					videoId={videoId}
 					isVideoPinned={isVidPinned}
 					pinnedVideoId={pinnedVideoId}
 					setPinnedVideoId={setPinnedVideoId}
@@ -3579,7 +3460,6 @@ function App() {
 					tweets={tweets}
 					pinTweet={pinTweet}
 					unpinTweet={unpinTweet}
-					raceId={background.raceId!}
 					races={races}
 					updateRaces={setRaces}
 					horses={horses}
@@ -3587,16 +3467,17 @@ function App() {
 					unpinHorse={unpinHorse}
 					updateHorses={setHorses}
 					updateSelectedPanelItem={setSelectedPanelItem}
-					setBackground={setBackground}
-					updateMap={updateMap}
-					removeBackground={removeBackground}
-					mapInputPosition={mapInputPosition}
-					addNewMarker={addNewMarker}
-					removeMarker={removeMarker}
-					updateMarker={updateMarker}
 					setActivePanel= {setActivePanel}
 					pinRace={pinRace}
 					unpinRace={unpinRace}
+					activeAddress={activeAccount ? activeAccount.address : ""}
+					objkts={objkts}
+					pinObjkt={pinObjkt}
+					unpinObjkt={unpinObjkt}
+					updateObjkts={setObjkts}
+					routeRoom={routeRoom}
+					trash={trash}
+					bgHolder={bgHolder}
 				/>
 			</Route>
 
@@ -3701,7 +3582,6 @@ function App() {
 				updateShowWhiteboard={onShowMarker}
 				musicPlayer={musicPlayer}
 				addVideo={addVideo}
-				addBackground={addBackground}
 				setBottomPanelHeight={setBottomPanelHeight}
 				activePanel={activePanel}
 				setActivePanel={setActivePanel}

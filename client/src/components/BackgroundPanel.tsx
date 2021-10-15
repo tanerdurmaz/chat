@@ -5,11 +5,9 @@ import {
 	createStyles, 
 	Theme
 } from '@material-ui/core';
-import React, { useEffect, useContext } from 'react';
+import React, { useEffect } from 'react';
 import axios from 'axios';
 import { backgroundIcons } from './BackgroundImages';
-import { AppStateContext } from '../contexts/AppStateContext';
-import { BackgroundTypes, IMap } from '../types';
 
 const useStyles = makeStyles((theme: Theme) =>
   createStyles({
@@ -24,7 +22,7 @@ const useStyles = makeStyles((theme: Theme) =>
 );
 
 interface IBackgroundPanelProps {
-	//sendImage: (name: string, type: 'background' | 'gif' | 'image') => void;
+	sendImage: (name: string, type: 'background' | 'gif' | 'image') => void;
 	images: IImagesState[];
 	setImages: React.Dispatch<React.SetStateAction<IImagesState[]>>;
 	searchValue: string;
@@ -34,7 +32,6 @@ interface IBackgroundPanelProps {
 		textToSearch: string,
 		setImages?: React.Dispatch<React.SetStateAction<IImagesState[]>>
 	) => void;
-	addBackground: (type: BackgroundTypes, data: IMap | string) => void;
 }
 
 export interface IResponseDataUnsplash {
@@ -64,8 +61,7 @@ export interface IImagesState {
 }
 
 export interface IIconsProps {
-	//sendImage: (name: string, type: 'background' | 'gif' | 'image') => void;
-	addBackground: (type: BackgroundTypes, data: IMap | string) => void;
+	sendImage: (name: string, type: 'background' | 'gif' | 'image') => void;
 	isSwitchChecked: boolean;
 }
 
@@ -80,7 +76,7 @@ export const getSearchedUnsplashImages = async (text: string) =>
 	});
 
 const BackgroundPanel = ({
-	addBackground,
+	sendImage,
 	images,
 	setImages,
 	isBackground,
@@ -99,12 +95,12 @@ const BackgroundPanel = ({
 			<div className="background-icon-list" >
 				{isImagesEmpty ? (
 					<DefaultIcons
-						addBackground={addBackground}
+						sendImage={sendImage}
 						isSwitchChecked={isBackground}
 					/>
 				) : (
 					<UnsplashIcons
-						addBackground={addBackground}
+						sendImage={sendImage}
 						images={images}
 						isSwitchChecked={isBackground}
 					/>
@@ -114,24 +110,15 @@ const BackgroundPanel = ({
 	);
 };
 
-const DefaultIcons = ({ addBackground, isSwitchChecked }: IIconsProps) => {
+const DefaultIcons = ({ sendImage, isSwitchChecked }: IIconsProps) => {
 	const classes = useStyles();
-	const { socket } = useContext(AppStateContext);
 	const defaultIcons = Object.keys(backgroundIcons).map((backgroundName) => {
 		const backgroundIcon = backgroundIcons[backgroundName];
-
 		return (
 			<IconButton
 				key={backgroundName}
 				onClick={() => {
-					//sendImage(backgroundName, isSwitchChecked ? 'background' : 'image');
-					addBackground("image", backgroundName);
-					socket.emit('event', {
-						key: 'background',
-						type: "image",
-						func: 'add',
-						name: backgroundName
-					})
+					sendImage(backgroundName, isSwitchChecked ? 'background' : 'image');
 				}}
 			>
 				<Avatar
@@ -148,25 +135,17 @@ const DefaultIcons = ({ addBackground, isSwitchChecked }: IIconsProps) => {
 };
 
 const UnsplashIcons = ({
-	addBackground,
+	sendImage,
 	images,
 	isSwitchChecked
 }: unsplashIconsProps) => {
 	const classes = useStyles();
-	const { socket } = useContext(AppStateContext);
 	const unsplashIcons = images.map(({ alt, thumbnailLink, imageLink, id }) => (
 		<IconButton
 			key={id}
-			onClick={() => {
-				//sendImage(imageLink, isSwitchChecked ? 'background' : 'image')
-				addBackground("image", imageLink);
-				socket.emit('event', {
-					key: 'background',
-					type: "image",
-					func: 'add',
-					name: imageLink
-				})
-			}}
+			onClick={() =>
+				sendImage(imageLink, isSwitchChecked ? 'background' : 'image')
+			}
 		>
 			<Avatar variant="rounded" src={thumbnailLink} alt={alt} className={classes.size} />
 		</IconButton>

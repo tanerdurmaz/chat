@@ -83,6 +83,11 @@
 	width: 100%;
 }
 
+.inputSearch {
+	color:aqua;
+	border: '2px dashed red';
+}
+
 .sound-icon img {
 	width: 51px;
 	height: auto;

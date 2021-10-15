@@ -5,8 +5,11 @@ import {
 	FormControlLabel,
 	IconButton,
 	Switch,
-	InputBase 
+	InputBase,
+	TextField,
+	Button
 } from '@material-ui/core';
+import { makeStyles } from '@material-ui/core/styles';
 import SearchIcon from '@material-ui/icons/Search';
 //react
 import React, { useEffect, useState, useContext, useRef } from 'react';
@@ -31,8 +34,9 @@ import newroomIcon from '../assets/buttons/newroom.png'
 //panels
 import YouTubeMusicPanel from './YouTubeMusicPanel';
 import { NFTPanel } from './NFT/NFTPanel';
+import { MapsPanel } from './MapsPanel';
 import { RacePanel } from './RacePanel';
-import { HorsePanel } from './HorsePanel';
+import { ObjktPanel } from './ObjktPanel';
 import { MusicPlayerPanel } from './MusicPlayerPanel';
 import { Chat } from './Chat';
 import { EmailPanel } from './EmailPanel';
@@ -41,10 +45,12 @@ import { GiphyPanel } from './GiphyPanel';
 import {SettingsPanel} from './SettingsPanel';
 //types
 import { ISubmit } from './NFT/OrderInput';
-import { IChatRoom, newPanelTypes, IMusicPlayer, IMetadata, BackgroundTypes, IMap } from '../types';
+import { IChatRoom, newPanelTypes, IMusicPlayer, IMetadata } from '../types';
 import { IGif } from '@giphy/js-types';
-import { AppStateContext } from '../contexts/AppStateContext';
+import { DAppClient } from "@airgap/beacon-sdk";
 
+const dAppClient = new DAppClient({ name: "Beacon Docs" });
+let activeAccount;
 interface IThePanelProps {
 	//panel
 	activePanel: newPanelTypes;
@@ -57,7 +63,7 @@ interface IThePanelProps {
 	sendGif: (gif: IGif) => void;
 	//youtube
 	sendVideo: (id: string) => void; // Sends video id to socket event to be set as background and played
-	lastQuery: string; // Last entered query in the search bar
+	lastQuery: string; // Last enteblack query in the search bar
 	queriedVideos: Array<any>; // Videos returned from search query
 	isVideoShowing: boolean;
 	lastVideoId: string;
@@ -115,7 +121,8 @@ interface IThePanelProps {
 	myLocation?: string;
 	music?: IMetadata;
 	clearField: (field: string) => void;
-	addBackground: (type: BackgroundTypes, data: string | IMap) => void;
+	//objkt
+	sendObjkt: (id: string, type: 'objkt') => void;
 }
 
 interface IPanel {
@@ -148,7 +155,7 @@ export interface IImagesState {
 	thumbnailLink: string;
 	id: string;
 }
-
+/*
 const panels: IPanel[] =
 	[
 		{type: 'settings'},
@@ -166,7 +173,23 @@ const panels: IPanel[] =
 		{type: 'email', icon: emailIcon}, 
 		{type: 'newroom', icon: newroomIcon}, 
 		{type: '+NFT'},
+	] */
+const panels: IPanel[] =
+	[
+		{type: 'home', icon: homeIcon},
+		{type: 'chat'},
+		{type: 'google'},
+		{type: 'unsplash'},
+		{type: 'giphy'},
+		{type: 'objkt'}, 
 	] 
+const useStyles = makeStyles({
+	input: {
+		fontFamily: "poxel-font",
+		color: "black",
+	  },
+
+});
 
 const ThePanel = ({
 	//panel
@@ -238,7 +261,7 @@ const ThePanel = ({
 	myLocation,
 	music,
 	clearField,
-	addBackground
+	sendObjkt
 }: IThePanelProps) => {
 	const [text, setText] = useState('');
 	const [isBackground, setisBackground] = useState(false);
@@ -246,7 +269,9 @@ const ThePanel = ({
 	const firebaseContext = useContext(FirebaseContext);
 	const [loading, setLoading] = useState(false);
 	const panelRef = useRef<HTMLDivElement>(null);
-	const { socket } = useContext(AppStateContext);
+	const classes = useStyles();
+	const [synced, setSynced] = useState('sync');
+	const [showUnsync, setShowUnsync] = useState(false);
 
 	const googleSearch = async (textToSearch: string) => {
 		setLoading(true);
@@ -282,6 +307,62 @@ const ThePanel = ({
 	};
 
 	useEffect(() => {
+		async function getAcc() {
+			activeAccount = await dAppClient.getActiveAccount();
+			if (activeAccount){
+			  setSynced(activeAccount.address)
+			  setShowUnsync(true);
+			}
+			else{
+			  setSynced('sync');
+			  setShowUnsync(false);
+			}
+		  }
+	  
+		  getAcc();
+	}, []);
+
+	async function unsync() {
+		activeAccount = await dAppClient.getActiveAccount();
+		if (activeAccount) {
+		  // User already has account connected, everything is ready
+		  // You can now do an operation request, sign request, or send another permission request to switch wallet
+		  dAppClient.clearActiveAccount().then(async () => {
+			activeAccount = await dAppClient.getActiveAccount();
+	
+			setSynced('sync');
+			setShowUnsync(false);
+		  });
+		}
+	  }
+	  
+	async function sync() {
+		activeAccount = await dAppClient.getActiveAccount();
+		if (activeAccount) {
+		  // User already has account connected, everything is ready
+		  // You can now do an operation request, sign request, or send another permission request to switch wallet
+
+		  console.log("Already connected:", activeAccount.address);
+	
+		  return activeAccount;
+		} else {
+		  // The user is not connected. A button should be displayed where the user can connect to his wallet.
+		  console.log("Not connected!");
+		  try {
+			console.log("Requesting permissions...");
+			const permissions = await dAppClient.requestPermissions();
+			console.log("Got permissions:", permissions.address);
+			setSynced(permissions.address)
+			setShowUnsync(true);
+
+		  } catch (error) {
+	
+			console.log("Got error:", error);
+		  }
+		}
+	  }
+
+	useEffect(() => {
 		if(panelRef.current){
 			setBottomPanelHeight(panelRef.current.offsetHeight);
 		}
@@ -313,7 +394,7 @@ const ThePanel = ({
 
 			{(activePanel === 'google' || activePanel === 'unsplash') && 
 				<BackgroundPanel
-					addBackground={addBackground}
+					sendImage={sendImage}
 					images={images}
 					setImages={setImages}
 					searchValue={text}
@@ -332,92 +413,21 @@ const ThePanel = ({
 				/>
 			}
 
-			{activePanel === 'youtube' && 
-				<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center'}} >
-					<YouTubeMusicPanel
-						setVolume={setVolume}
-						setVideoId={setVideoId}
-						sendVideo={sendVideo}
-						queriedVideos={queriedVideos}
-						setQueriedVideos={setQueriedVideos}
-						lastQuery={lastQuery}
-						setLastQuery={setLastQuery}
-						setIsVideoShowing={setIsVideoShowing}
-						isVideoShowing={isVideoShowing}
-						lastVideoId={lastVideoId}
-						setLastVideoId={setLastVideoId}
-						updateLastTime={updateLastTime}
-						hideAllPins={hideAllPins}
-						setHideAllPins={setHideAllPins}
-						isBackground={isBackground}
-						addVideo={addVideo}
-						addBackground={addBackground}
-					/>
-				</div>
-			}
 
-			{activePanel === 'race' && 
+
+
+			{activePanel === 'objkt' &&
 				<div  className="background-icon-list" >
-					<RacePanel 
-						sendRace={sendRace}
-						addRace={addRace}
-						isBackground={isBackground}
-						hideAllPins={hideAllPins}
-						setHideAllPins={setHideAllPins}
-						addBackground={addBackground}
-					/>
+					<ObjktPanel sendObjkt= {sendObjkt}/>
 				</div>
 			}
 
-			{activePanel === 'horse' &&
-				<div  className="background-icon-list" >
-					<HorsePanel sendHorse= {sendHorse}/>
-				</div>
-			}
 
-			{activePanel === 'music' &&
-				<div  className="background-icon-list" >
-					<MusicPlayerPanel
-						changePlaylist={changePlaylist}
-						musicPlayer={musicPlayer}
-					/>
-				</div>
-			}
-
-			{activePanel === '+NFT' && 
-				<NFTPanel
-					roomData={roomData}
-					onError={onError}
-					onSuccess={onSuccess}
-				/>
-			}
-
-			{activePanel === 'email' && 
-				<EmailPanel
-					sendEmail={sendEmail}
-				/>
-			}
-
-			{activePanel === 'settings' && 
-				<SettingsPanel
-					setStep={setStep}
-					onSubmitUrl={onSubmitUrl}
-					onChangeName={onChangeName}
-					onChangeAvatar={onChangeAvatar}
-					onSendLocation={onSendLocation}
-					onSubmitEmail={onSubmitEmail}
-					currentAvatar={currentAvatar}
-					username={username}
-					email={email}
-					myLocation={myLocation}
-					music={music}
-					clearField={clearField}
-					setActivePanel={setActivePanel}
-				/>
-			}
 			
 			<div className="background-search-settings">
-				<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }} >
+				<Button className="app-btn" style={{ marginRight: "auto", color: "black", fontFamily: "poxel-font" }} title={`version: ${process.env.REACT_APP_VERSION}. production: leo, mike, yinbai, krishang, tony, grant, andrew, sokchetra, allen, ishaan, kelly, taner, eric, anthony, maria`}  onClick={async () => { window.open('https://adventurenetworks.net/#/'); }} >Adventure Networks </Button>
+
+				<div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', fontFamily: "poxel-font" }} >
 
 					{//panel icon-buttons & special cases for newroom home & marketplace
 					panels.map((panel, index) => (
@@ -428,27 +438,7 @@ const ThePanel = ({
 								if(panel.type === "newroom"){onNewRoom()}
 								else if(panel.type === "home"){routeHome()}
 								else if(panel.type === "marketplace"){
-									addBackground("marketplace", "");
-									socket.emit('event', {
-										key: 'background',
-										type: "marketplace",
-										func: 'add'
-									})
-								}
-								else if(panel.type === "maps"){
-									addBackground("map", {
-										coordinates: {
-											lat: 33.91925555555555,
-											lng: -118.41655555555555
-										},
-										markers: [],
-										zoom: 12
-									});
-									socket.emit('event', {
-										key: 'background',
-										type: "map",
-										func: 'add'
-									})
+									pinMarketplace()
 								}
 								if(panel.type === "settings"){setHideAllPins(true)}
 								else{setHideAllPins(false)}
@@ -457,35 +447,40 @@ const ThePanel = ({
 						>
 							{panel.icon ? 
 								<img className = {activePanel === panel.type ? "button-disabled" : "" } src={ panel.icon } alt= { panel.type }  width= "30" height= "30"/> 
-								: (panel.type === "settings" ? <img className = {activePanel === panel.type ? "button-disabled" : "" } src={ avatar } alt= { panel.type }  width= "30" height= "30"/> : panel.type) 
+								: (panel.type === "settings" ? <img className = {activePanel === panel.type ? "button-disabled" : "" } src={ avatar } alt= { panel.type }  width= "30" height= "30"/> : <div style={{fontFamily: "poxel-font", color: "black", fontSize: 20}}>{panel.type} </div>) 
 							}
 							
 						</IconButton>
 					))}
 
-					<div>
+
+{				/*	<div style={{fontFamily: "poxel-font" }}>
 						<FormControlLabel
 							checked={checked()}
 							onChange={() => setisBackground(!isBackground)}
 							control={<Switch color="primary" />}
-							label="background"
+							label="BACKGROUND"
 						/>
-					</div>
+						</div>*/}
 
 					{//input for image searchs
-					(activePanel === 'unsplash' || activePanel === 'google' ||  activePanel === 'giphy') ? 
-						<div style={{ paddingInline: 20 }}> 
-							<InputBase
-								placeholder={"Search by " + activePanel}
-								onChange={(e) => setText(e.target.value)}
-								onKeyPress={(e) => {
-										if(e.key === 'Enter'){
-											if(activePanel === 'unsplash'){searchSubmit(text, setImages);} else if (activePanel === 'google') {googleSearch(text);}
+					(activePanel === 'unsplash' || activePanel === 'google' ||  activePanel === 'giphy' ) ? 
+						<div style={{ display: "flex"}}> 
+							<div style={{ paddingBlock: 5, paddingInline: 20, border: '1px dashed black' }}> 
+								<TextField
+									inputProps={{ className: classes.input }}
+									color="primary" focused
+									placeholder={"Search by " + activePanel}
+									onChange={(e) => setText(e.target.value)}
+									onKeyPress={(e) => {
+											if(e.key === 'Enter'){
+												if(activePanel === 'unsplash'){searchSubmit(text, setImages);} else if (activePanel === 'google') {googleSearch(text);}
+											}
 										}
 									}
-								}
-								value={text}
-							/>
+									value={text}
+								/>
+							</div>
 							<IconButton
 								color="primary"
 								onClick={() => {if(activePanel === 'unsplash'){searchSubmit(text, setImages);} else if (activePanel === 'google') {googleSearch(text);}}}
@@ -493,7 +488,7 @@ const ThePanel = ({
 								<SearchIcon />
 							</IconButton>
 
-						</div> : <div style={{ width: 289 }}> </div> 
+						</div> : <div style={{ width: 252 }}> </div> 
 					}
 
 					{loading &&
@@ -507,6 +502,10 @@ const ThePanel = ({
 							alt="three dots"
 						/>
 					}
+				</div>
+				<div style={{ display: 'flex', width: 441 }}>
+					<Button className="app-btn" style={{ marginLeft: "auto", color: "black", fontFamily: "poxel-font" }} title={"Hic et Nunc (h=n)"}  onClick={async () => { await sync(); }} >{synced} </Button>
+					{showUnsync && <Button className="app-btn" style={{  color: "black", fontFamily: "poxel-font"}} title={"Hic et Nunc (h=n)"} onClick={() => { unsync() }} >unsync </Button>}
 				</div>
 			</div>
 		</div>

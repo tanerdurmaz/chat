@@ -210,9 +210,9 @@ export const AuthProvider = (props: IAuthProviderProps) => {
 	}, [verifyLogin, accountId, connectMetamask]);
 
 	useEffect(() => {
-		if (!hasTriedAutoSignIn) {
+		/*if (!hasTriedAutoSignIn) {
 			autoSignIn();
-		}
+		}*/
 	}, [autoSignIn, hasTriedAutoSignIn]);
 
 	const signIn = async () => {
