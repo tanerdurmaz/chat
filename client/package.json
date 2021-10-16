@@ -96,6 +96,6 @@
 		"dotenv": "^10.0.0",
 		"prettier": "^2.2.1"
 	},
-	"homepage": "https://trychats.com",
+	"homepage": "https://matter-hen.herokuapp.com/",
 	"proxy": "http://localhost:8000"
 }
